@@ -283,8 +283,14 @@ class OpenAIRealtimeTransport:
         
         当客户端禁用 server_vad (turn_detection=null) 时，
         客户端会发送此事件来手动提交累积的音频。
+        支持客户端在事件中提供可选的 item_id。
         """
-        item_id = generate_id("item")
+        # 优先使用客户端提供的 item_id，否则生成新 ID
+        client_item_id = event.get("item_id")
+        if client_item_id and isinstance(client_item_id, str) and client_item_id.strip():
+            item_id = client_item_id.strip()
+        else:
+            item_id = generate_id("item")
         previous_item_id = self.state.current_item.id if self.state.current_item else None
         
         # 发送提交确认事件

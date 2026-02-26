@@ -26,10 +26,10 @@
 
 ```bash
 # 使用硅基流动
-LLM_PROVIDER=siliconflow
-SILICONFLOW_API_KEY=sk-your-api-key-here
-SILICONFLOW_MODEL=deepseek-ai/DeepSeek-V3.2
-SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
+ LLM_MODEL_NAME=SiliconFlow
+LLM_BASE_URL=https://api.siliconflow.cn/v1
+LLM_MODEL_ID=deepseek-ai/DeepSeek-V3
+LLM_API_KEY=sk-your-api-key-here
 ```
 
 ### 3. 启动服务
@@ -40,9 +40,9 @@ uv run python main.py
 
 服务器启动时会显示：
 ```
-LLM 服务: siliconflow
+LLM 服务: SiliconFlow
   - API Key: sk-ab****xyz9
-  - 模型: deepseek-ai/DeepSeek-V3.2
+  - 模型: deepseek-ai/DeepSeek-V3
   - Base URL: https://api.siliconflow.cn/v1
 ```
 
@@ -50,7 +50,7 @@ LLM 服务: siliconflow
 
 | 模型 | 说明 | 适用场景 |
 |------|------|----------|
-| `deepseek-ai/DeepSeek-V3.2` | DeepSeek V3.2 | 日常对话，推荐 ⭐ |
+| `deepseek-ai/DeepSeek-V3` | DeepSeek V3 | 日常对话，推荐 ⭐ |
 | `deepseek-ai/DeepSeek-R1` | DeepSeek R1 推理模型 | 代码生成，复杂推理 |
 | `Qwen/Qwen3-235B-A22B` | 通义千问3 235B | 高质量对话，推理 |
 
@@ -64,9 +64,10 @@ STT_PROVIDER=local_whisper
 WHISPER_MODEL=base
 
 # LLM: 硅基流动（便宜快速）
-LLM_PROVIDER=siliconflow
-SILICONFLOW_API_KEY=sk-your-key
-SILICONFLOW_MODEL=deepseek-ai/DeepSeek-V3.2
+LLM_MODEL_NAME=SiliconFlow
+LLM_BASE_URL=https://api.siliconflow.cn/v1
+LLM_MODEL_ID=deepseek-ai/DeepSeek-V3
+LLM_API_KEY=sk-your-key
 
 # TTS: Edge TTS（免费）
 TTS_PROVIDER=edge_tts
@@ -81,9 +82,10 @@ STT_PROVIDER=deepgram
 DEEPGRAM_API_KEY=your-key
 
 # LLM: 硅基流动
-LLM_PROVIDER=siliconflow
-SILICONFLOW_API_KEY=sk-your-key
-SILICONFLOW_MODEL=deepseek-ai/DeepSeek-V3.2
+LLM_MODEL_NAME=SiliconFlow
+LLM_BASE_URL=https://api.siliconflow.cn/v1
+LLM_MODEL_ID=deepseek-ai/DeepSeek-V3
+LLM_API_KEY=sk-your-key
 
 # TTS: Edge TTS（免费）
 TTS_PROVIDER=edge_tts
@@ -98,9 +100,10 @@ STT_PROVIDER=deepgram
 DEEPGRAM_API_KEY=your-key
 
 # LLM: 硅基流动（大模型）
-LLM_PROVIDER=siliconflow
-SILICONFLOW_API_KEY=sk-your-key
-SILICONFLOW_MODEL=deepseek-ai/DeepSeek-R1
+LLM_MODEL_NAME=SiliconFlow
+LLM_BASE_URL=https://api.siliconflow.cn/v1
+LLM_MODEL_ID=deepseek-ai/DeepSeek-R1
+LLM_API_KEY=sk-your-key
 
 # TTS: ElevenLabs（高质量）
 TTS_PROVIDER=elevenlabs
@@ -113,7 +116,7 @@ ELEVENLABS_API_KEY=your-key
 
 | 模型 | 输入价格 | 输出价格 |
 |------|---------|---------|
-| DeepSeek-V3.2 | ¥2/M tokens | ¥3/M tokens |
+| DeepSeek-V3 | ¥2/M tokens | ¥3/M tokens |
 | DeepSeek-R1 | ¥4/M tokens | ¥16/M tokens |
 | Qwen3-235B-A22B | ¥8/M tokens | ¥16/M tokens |
 
@@ -188,7 +191,7 @@ provider = OpenAILLMProvider(
 🎯 **最佳性价比组合**：
 ```
 STT: Deepgram (每月200分钟免费)
-LLM: deepseek-ai/DeepSeek-V3.2 (便宜快速)
+LLM: deepseek-ai/DeepSeek-V3 (便宜快速)
 TTS: Edge TTS (完全免费)
 ```
 

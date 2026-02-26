@@ -386,6 +386,18 @@ class LLMService(BaseService):
         """更新系统提示词"""
         self.instructions = instructions
     
+    def inject_context_message(self, role: str, content: str):
+        """将消息直接注入 LLM provider 的对话历史
+
+        用于同步 PipelineManager 的外部上下文（assistant/system 角色的消息）
+        到 provider，使其在后续 generate_stream 中能看到完整对话。
+        不要用于 user 消息——user 消息通过 generate_stream 的 prompt 参数传入，
+        provider 会自行追加到历史中。
+        """
+        if self._provider and hasattr(self._provider, '_conversation_history'):
+            self._provider._conversation_history.append({"role": role, "content": content})
+            logger.debug(f"上下文消息已注入 provider 历史: [{role}] {content[:50]}")
+    
     async def process(self, frame: Frame) -> Optional[Frame]:
         """处理转录文本，生成 LLM 响应"""
         if not isinstance(frame, TranscriptionFrame):
@@ -837,6 +849,10 @@ class PipelineManager:
         # 仅用户消息才标记为待处理输入
         if role == "user":
             self._pending_text_input = text
+        else:
+            # assistant/system 消息直接同步到 LLM provider 历史
+            if self.llm:
+                self.llm.inject_context_message(role, text)
         
         logger.info(f"文本消息已注入 LLM 上下文: [{role}] {text[:50]}...")
     

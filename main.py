@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from config import config, print_config, validate_config
+from config import config, print_config, validate_config, ensure_env_file, _ENV_FILE, _ENV_EXAMPLE_FILE
 from realtime_session import session_manager, RealtimeSession
 from logger_config import setup_logging, get_logger
 
@@ -35,7 +35,9 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    # 启动时
+    # 启动时确保 .env 存在
+    ensure_env_file()
+
     logger.info("=" * 60)
     logger.info("OpenAI Realtime API 兼容服务器启动")
     logger.info(f"WebSocket 端点: ws://localhost:{config.server.port}{config.server.ws_path}")
@@ -179,8 +181,6 @@ async def api_info():
 
 # ==================== 配置管理 API ====================
 
-from config import _ENV_FILE, _ENV_EXAMPLE_FILE
-
 # 配置项元数据：定义 WebUI 设置面板展示的字段信息
 CONFIG_SCHEMA: list[dict] = [
     # ── 服务器 ──
@@ -309,11 +309,11 @@ async def get_config():
 
 @app.get("/api/config/raw")
 async def get_config_raw(request: Request):
-    """读取 .env 原始值（密钥不脱敏，仅 DEBUG+localhost 可用）"""
-    # 安全检查：仅在 DEBUG 模式且请求来自 localhost 时允许
-    debug = os.getenv("DEBUG", "true").lower() in ("true", "1", "yes")
+    """读取 .env 原始值（密钥不脱敏，仅 DEBUG+本机可用）"""
+    # 安全检查：仅在 DEBUG 模式且请求来自本机回环地址时允许
+    debug = config.server.debug
     client_host = request.client.host if request.client else ""
-    is_local = client_host in ("127.0.0.1", "::1", "localhost")
+    is_local = client_host in ("127.0.0.1", "::1")
     if not (debug and is_local):
         raise HTTPException(status_code=403, detail="仅允许在调试模式下从本机访问原始配置")
     values = _parse_env_file(_ENV_FILE)
@@ -338,6 +338,35 @@ async def save_config(request: Request):
             detail=f"未知的配置项: {', '.join(sorted(unknown_keys))}。"
                    f"允许的 key 请参考 /api/config/schema"
         )
+
+    # 校验：数值类型格式检查
+    _schema_map = {item["key"]: item for item in CONFIG_SCHEMA}
+    int_fields = {"SERVER_PORT", "LLM_MAX_TOKENS", "VAD_SILENCE_DURATION_MS", "VAD_PREFIX_PADDING_MS"}
+    float_fields = {"LLM_TEMPERATURE", "VAD_THRESHOLD"}
+    range_checks: dict[str, tuple[float, float]] = {
+        "VAD_THRESHOLD": (0.0, 1.0),
+        "LLM_TEMPERATURE": (0.0, 2.0),
+    }
+    errors: list[str] = []
+    for k, v in values.items():
+        if not v:  # 空值跳过（允许清空字段）
+            continue
+        if k in int_fields:
+            try:
+                int(v)
+            except ValueError:
+                errors.append(f"{k} 应为整数，收到: {v!r}")
+        elif k in float_fields:
+            try:
+                fval = float(v)
+                if k in range_checks:
+                    lo, hi = range_checks[k]
+                    if not (lo <= fval <= hi):
+                        errors.append(f"{k} 应在 {lo}~{hi} 之间，收到: {v}")
+            except ValueError:
+                errors.append(f"{k} 应为数字，收到: {v!r}")
+    if errors:
+        raise HTTPException(status_code=400, detail="; ".join(errors))
 
     # 如果 .env 不存在，先从 .env.example 复制一份作为模板
     if not _ENV_FILE.exists() and _ENV_EXAMPLE_FILE.exists():

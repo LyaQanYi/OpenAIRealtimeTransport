@@ -43,9 +43,6 @@ def ensure_env_file() -> bool:
     return True
 
 
-# 启动时确保 .env 存在
-ensure_env_file()
-
 # 加载 .env
 try:
     from dotenv import load_dotenv
@@ -136,7 +133,7 @@ class TTSConfig:
 
     # OpenAI TTS 统一字段 — 留空则自动复用 LLM_API_KEY / LLM_BASE_URL
     tts_api_key: str = field(default_factory=lambda: os.getenv("TTS_API_KEY", ""))
-    tts_base_url: str = field(default_factory=lambda: os.getenv("TTS_BASE_URL", "https://api.openai.com/v1"))
+    tts_base_url: str = field(default_factory=lambda: os.getenv("TTS_BASE_URL", ""))
     tts_model_id: str = field(default_factory=lambda: os.getenv("TTS_MODEL_ID", "tts-1"))
     tts_voice: str = field(default_factory=lambda: os.getenv("TTS_VOICE", "alloy"))
 

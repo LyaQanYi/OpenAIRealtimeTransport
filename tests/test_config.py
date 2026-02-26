@@ -312,36 +312,34 @@ class TestEnvExampleCompleteness:
     def test_each_preset_has_four_fields(self, example_content):
         """每个 LLM 预设应包含完整四要素 (在注释块中)
 
-        .env.example 中的 LLM 预设块约定如下：
-        - 以 "预设:" 或 "预设：" 开头的注释行标识新块开始
-        - 块内包含注释行和/或非注释配置行（活跃预设）
-        - 空行或下一个"预设:"行表示当前块结束
-        - 每个块内必须包含 LLM_MODEL_NAME/LLM_BASE_URL/LLM_MODEL_ID/LLM_API_KEY 四个字段
-        - 解析变量: preset_blocks(所有预设块), current_block(当前块行),
-          in_preset(是否在块内), four_keys(必须包含的 4 个 key)
+        .env.example 中的 LLM 预设块解析规则：
+        - 任何含有 "预设:" 或 "预设：" 的行始终开始一个新块（保存先前的块，开始新 current_block）
+        - 空行结束当前块（保存并清空 current_block）
+        - 其他行（无论注释还是活跃配置）追加到 current_block
+        - 解析结束后若 current_block 非空则追加
+        - 每个块内必须包含 LLM_MODEL_NAME/LLM_BASE_URL/LLM_MODEL_ID/LLM_API_KEY
         """
         lines = example_content.splitlines()
-        # 找所有 "预设:" 块
         preset_blocks: list[list[str]] = []
         current_block: list[str] = []
         in_preset = False
         for line in lines:
             if "预设:" in line or "预设：" in line:
+                # 新预设块开始：保存先前的块（如有）
                 if current_block:
                     preset_blocks.append(current_block)
                 current_block = [line]
                 in_preset = True
             elif in_preset:
-                if line.strip() == "" or (line.strip().startswith("#") and "预设" not in line):
-                    current_block.append(line)
-                elif not line.strip().startswith("#"):
-                    # 非注释行 = 活跃预设的值
-                    current_block.append(line)
-                else:
-                    # 新预设开始
+                if line.strip() == "":
+                    # 空行结束当前块
                     if current_block:
                         preset_blocks.append(current_block)
-                    current_block = [line]
+                    current_block = []
+                    in_preset = False
+                else:
+                    current_block.append(line)
+        # 最后一个块
         if current_block:
             preset_blocks.append(current_block)
 
