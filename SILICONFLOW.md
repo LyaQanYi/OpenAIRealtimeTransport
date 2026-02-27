@@ -26,7 +26,7 @@
 
 ```bash
 # 使用硅基流动
- LLM_MODEL_NAME=SiliconFlow
+LLM_MODEL_NAME=SiliconFlow
 LLM_BASE_URL=https://api.siliconflow.cn/v1
 LLM_MODEL_ID=deepseek-ai/DeepSeek-V3
 LLM_API_KEY=sk-your-api-key-here
