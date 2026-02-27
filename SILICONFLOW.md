@@ -39,7 +39,7 @@ uv run python main.py
 ```
 
 服务器启动时会显示：
-```
+```text
 LLM 服务: SiliconFlow
   - API Key: sk-ab****xyz9
   - 模型: deepseek-ai/DeepSeek-V3
@@ -119,6 +119,8 @@ ELEVENLABS_API_KEY=your-key
 | DeepSeek-V3 | ¥2/M tokens | ¥3/M tokens |
 | DeepSeek-R1 | ¥4/M tokens | ¥16/M tokens |
 | Qwen3-235B-A22B | ¥8/M tokens | ¥16/M tokens |
+
+更新于 2026-02-27（以官网为准）
 
 相比之下，OpenAI GPT-4o 的价格约为：
 - 输入: ¥35/M tokens
