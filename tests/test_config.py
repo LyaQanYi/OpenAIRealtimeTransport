@@ -4,6 +4,7 @@
 """
 import os
 import shutil
+import sys
 import textwrap
 from pathlib import Path
 from unittest.mock import patch
@@ -13,8 +14,6 @@ import pytest
 # 测试辅助：项目根目录
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = PROJECT_ROOT / "src"
-
-import sys
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 

@@ -17,7 +17,7 @@
 
 ## 📁 项目结构
 
-```
+```text
 ├── src/
 │   └── openai_realtime_transport/
 │       ├── app.py          # FastAPI 主服务器（核心实现）

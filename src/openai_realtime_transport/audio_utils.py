@@ -113,7 +113,7 @@ def decode_audio_to_pcm16(audio_bytes: bytes, target_rate: int = INTERNAL_SAMPLE
         logger.error("miniaudio 未安装，无法解码 MP3 音频。请运行: pip install miniaudio")
         return b""
     except Exception as e:
-        logger.error(f"音频解码失败: {e}")
+        logger.exception(f"音频解码失败: {e}")
         return b""
 
 

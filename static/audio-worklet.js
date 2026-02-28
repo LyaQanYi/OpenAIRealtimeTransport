@@ -30,6 +30,11 @@ class CaptureProcessor extends AudioWorkletProcessor {
     // 音量计量：每 N 个 chunk 发送一次音量数据（N×20ms 间隔）
     this._chunkCount = 0;
     this._volumeInterval = 3; // ~60ms
+
+    // 跨 chunk 累积 RMS/Peak 数据
+    this._accSumSq = 0;
+    this._accPeak = 0;
+    this._accSamples = 0;
   }
 
   /**
@@ -60,21 +65,20 @@ class CaptureProcessor extends AudioWorkletProcessor {
       this._buffer[this._writeIdx++] = channel[i];
 
       if (this._writeIdx >= this._nativeChunk) {
-        // ── 计算实时音量 (RMS + Peak) ──
-        let sumSq = 0;
-        let peak = 0;
+        // ── 累积实时音量 (RMS + Peak) ──
         for (let k = 0; k < this._nativeChunk; k++) {
           const s = this._buffer[k];
-          sumSq += s * s;
+          this._accSumSq += s * s;
           const abs = s < 0 ? -s : s;
-          if (abs > peak) peak = abs;
+          if (abs > this._accPeak) this._accPeak = abs;
         }
-        const rms = Math.sqrt(sumSq / this._nativeChunk);
+        this._accSamples += this._nativeChunk;
 
         // 周期性发送音量数据到主线程
         this._chunkCount++;
         if (this._chunkCount >= this._volumeInterval) {
-          this._chunkCount = 0;
+          const rms = Math.sqrt(this._accSumSq / this._accSamples);
+          const peak = this._accPeak;
           const dB = rms > 1e-5 ? 20 * Math.log10(rms) : -100;
           this.port.postMessage({
             type: 'volume',
@@ -82,6 +86,11 @@ class CaptureProcessor extends AudioWorkletProcessor {
             peak,
             dB: Math.round(dB * 10) / 10
           });
+          // 重置累积器
+          this._chunkCount = 0;
+          this._accSumSq = 0;
+          this._accPeak = 0;
+          this._accSamples = 0;
         }
 
         // ── 重采样 + PCM16 编码 ──

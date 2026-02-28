@@ -4,6 +4,9 @@ from pathlib import Path
 import importlib
 import sys
 
+# DEV-ONLY: inject src/ into sys.path so the package is importable without
+# an editable install.  In production, prefer `pip install -e .` and remove
+# this block.
 _SRC = Path(__file__).resolve().parent / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))

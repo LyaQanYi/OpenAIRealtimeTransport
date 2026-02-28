@@ -17,7 +17,7 @@ A local WebSocket server that mirrors the OpenAI Realtime API protocol, so you c
 
 ## 📁 Project Structure
 
-```
+```text
 ├── src/
 │   └── openai_realtime_transport/
 │       ├── app.py          # FastAPI server (core implementation)

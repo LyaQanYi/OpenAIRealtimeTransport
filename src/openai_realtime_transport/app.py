@@ -8,6 +8,7 @@ OpenAI Realtime API 兼容服务器
 客户端连接:
     将 OpenAI SDK 的 baseUrl 修改为 ws://localhost:8000 即可
 """
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -21,6 +22,7 @@ from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import config, print_config, validate_config, ensure_env_file, _ENV_FILE, _ENV_EXAMPLE_FILE
+from .protocol import generate_id
 from .realtime_session import session_manager, RealtimeSession
 from .logger_config import setup_logging, get_logger
 
@@ -50,6 +52,12 @@ async def lifespan(app: FastAPI):
     if _blocking:
         for e in _blocking:
             logger.error("配置错误: %s — %s", e.field, e.message)
+        if os.getenv("STRICT_CONFIG", "").lower() in ("1", "true", "yes"):
+            logger.error(
+                "存在 %d 个配置错误且 STRICT_CONFIG 已启用，服务终止。请修正 .env 后重启。",
+                len(_blocking),
+            )
+            raise SystemExit(1)
         logger.error("存在 %d 个配置错误，服务仍将启动但相关功能可能异常。请修正 .env 后重启。", len(_blocking))
     
     yield
@@ -96,8 +104,6 @@ def _parse_and_validate_cors_origins(env_value: str, *, debug: bool) -> tuple[li
             )
             return ["*"], False
 
-        defaults = _DEFAULT_CORS_ORIGINS
-        
         logger.info(
             "CORS: 未配置 CORS_ORIGINS (为空/仅空格/仅分隔符), 生产模式将使用默认来源: %s",
             _DEFAULT_CORS_ORIGINS,
@@ -242,6 +248,10 @@ def _parse_env_file(path: Path) -> dict[str, str]:
     return result
 
 
+# 并发保护：串行化对 .env 文件的写入操作
+_config_write_lock = asyncio.Lock()
+
+
 def _write_env_file(path: Path, values: dict[str, str]) -> None:
     """将 key=value 写入 .env 文件，保留注释结构"""
     # 如果已有 .env，保留注释行并更新值；新增的 key 追加到末尾
@@ -254,8 +264,16 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
 
     def _format_env_value(k: str, v: str) -> str:
         """Format a key=value pair, quoting and escaping as needed."""
-        if " " in v or "#" in v or "'" in v or '"' in v:
-            escaped = v.replace('\\', '\\\\').replace('"', '\\"')
+        needs_quote = any(ch in v for ch in (' ', '#', "'", '"', '\n', '\r', '\t', '$', '\\'))
+        if needs_quote:
+            escaped = (
+                v.replace('\\', '\\\\')
+                 .replace('"', '\\"')
+                 .replace('\n', '\\n')
+                 .replace('\r', '\\r')
+                 .replace('\t', '\\t')
+                 .replace('$', '\\$')
+            )
             return f'{k}="{escaped}"'
         return f"{k}={v}"
 
@@ -368,11 +386,12 @@ async def save_config(request: Request):
     if errors:
         raise HTTPException(status_code=400, detail="; ".join(errors))
 
-    # 如果 .env 不存在，先从 .env.example 复制一份作为模板
-    if not _ENV_FILE.exists() and _ENV_EXAMPLE_FILE.exists():
-        _ENV_FILE.write_text(_ENV_EXAMPLE_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+    async with _config_write_lock:
+        # 如果 .env 不存在，先从 .env.example 复制一份作为模板
+        if not _ENV_FILE.exists() and _ENV_EXAMPLE_FILE.exists():
+            _ENV_FILE.write_text(_ENV_EXAMPLE_FILE.read_text(encoding="utf-8"), encoding="utf-8")
 
-    _write_env_file(_ENV_FILE, values)
+        _write_env_file(_ENV_FILE, values)
 
     logger.info("配置已保存到 .env 文件，变更的 key: %s", list(values.keys()))
     return {
@@ -415,36 +434,17 @@ async def list_sessions():
 
 # ==================== WebSocket 端点 ====================
 
-@app.websocket("/v1/realtime")
-async def websocket_realtime(
-    websocket: WebSocket,
-    model: Optional[str] = Query(default="gpt-4o-realtime-preview", description="模型名称"),
-):
-    """
-    OpenAI Realtime API 兼容的 WebSocket 端点
-    
-    支持的查询参数:
-    - model: 模型名称（默认: gpt-4o-realtime-preview）
-    
-    协议:
-    - 完全兼容 OpenAI Realtime API 的 JSON 事件格式
-    - 音频格式: PCM16, 24kHz, 单声道
-    """
-    # 验证请求（可选）
-    # 在生产环境中，你可能需要验证 Authorization header
-    
+
+async def _handle_realtime_ws(websocket: WebSocket, model: str) -> None:
+    """共享的 WebSocket accept / run / cleanup 流程。"""
     await websocket.accept()
     logger.info(f"新的 WebSocket 连接，模型: {model}")
-    
+
     session: Optional[RealtimeSession] = None
-    
+
     try:
-        # 创建会话，传递模型参数
         session = await session_manager.create_session(websocket, model=model)
-        
-        # 运行会话主循环
         await session.run()
-        
     except WebSocketDisconnect:
         logger.info("客户端断开连接")
     except Exception as e:
@@ -461,30 +461,31 @@ async def websocket_realtime(
             await session_manager.remove_session(session.state.session_id)
 
 
-# 备用端点，支持带模型参数的路径
+@app.websocket("/v1/realtime")
+async def websocket_realtime(
+    websocket: WebSocket,
+    model: Optional[str] = Query(default="gpt-4o-realtime-preview", description="模型名称"),
+):
+    """
+    OpenAI Realtime API 兼容的 WebSocket 端点
+    
+    支持的查询参数:
+    - model: 模型名称（默认: gpt-4o-realtime-preview）
+    
+    协议:
+    - 完全兼容 OpenAI Realtime API 的 JSON 事件格式
+    - 音频格式: PCM16, 24kHz, 单声道
+    """
+    await _handle_realtime_ws(websocket, model or "gpt-4o-realtime-preview")
+
+
 @app.websocket("/v1/realtime/{model_path:path}")
 async def websocket_realtime_with_model(
     websocket: WebSocket,
     model_path: str,
 ):
     """支持路径参数指定模型的 WebSocket 端点"""
-    await websocket.accept()
-    logger.info(f"新的 WebSocket 连接，模型路径: {model_path}")
-    
-    session: Optional[RealtimeSession] = None
-    
-    try:
-        # 使用路径中的模型名称
-        session = await session_manager.create_session(websocket, model=model_path)
-        await session.run()
-    except WebSocketDisconnect:
-        logger.info("客户端断开连接")
-    except Exception as e:
-        logger.exception(f"WebSocket 错误: {e}")
-    finally:
-        # 清理会话（不调用 session.stop，由 session.run() 的 finally 块负责）
-        if session:
-            await session_manager.remove_session(session.state.session_id)
+    await _handle_realtime_ws(websocket, model_path)
 
 
 # ==================== 模拟 OpenAI REST API 端点 ====================
@@ -537,8 +538,6 @@ async def list_models():
 
 
 # ==================== 错误处理 ====================
-
-from .protocol import generate_id
 
 @app.exception_handler(Exception)
 async def global_exception_handler(_request, exc):

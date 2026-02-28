@@ -14,7 +14,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from .protocol import (
     ClientEventType, ServerEventType, ServerEventBuilder,
     SessionConfig, TurnDetection, ConversationItem, Response,
-    generate_id
+    InputAudioTranscription, generate_id
 )
 from .audio_utils import AudioConverter, AudioBuffer, calculate_audio_duration_ms
 from .config import config
@@ -236,7 +236,6 @@ class OpenAIRealtimeTransport:
         if "input_audio_transcription" in session_data:
             iat = session_data["input_audio_transcription"]
             if iat:
-                from .protocol import InputAudioTranscription
                 self.state.session.input_audio_transcription = InputAudioTranscription(
                     model=iat.get("model", "whisper-1")
                 )
