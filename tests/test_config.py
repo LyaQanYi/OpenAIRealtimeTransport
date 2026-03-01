@@ -297,7 +297,7 @@ class TestEnvExampleCompleteness:
         """每个 LLM 预设应包含完整四要素 (在注释块中)
 
         .env.example 中的 LLM 预设块解析规则：
-        - 任何含有 "预设" 的行始终开始一个新块（保存先前的块，开始新 current_block）
+        - 含有 "预设:" 或 "预设：" 的行始终开始一个新块（保存先前的块，开始新 current_block）
         - 空行结束当前块（保存并清空 current_block）
         - 其他行（无论注释还是活跃配置）追加到 current_block
         - 解析结束后若 current_block 非空则追加

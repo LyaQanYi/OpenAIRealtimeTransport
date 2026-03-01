@@ -227,6 +227,37 @@ CONFIG_SCHEMA: list[dict] = [
 ]
 
 
+# 反转义映射，与 _format_env_value 中的转义规则对称
+_ESCAPE_MAP: dict[str, str] = {
+    '\\': '\\',
+    '"': '"',
+    'n': '\n',
+    'r': '\r',
+    't': '\t',
+    '$': '$',
+}
+
+
+def _unescape_env_value(s: str) -> str:
+    """Single-pass unescape, inverse of _format_env_value.
+
+    Iterates through *s* and interprets each ``\X`` sequence exactly once,
+    so ``\\n`` becomes a literal backslash followed by 'n' (not a newline).
+    """
+    out: list[str] = []
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch == '\\' and i + 1 < len(s):
+            nxt = s[i + 1]
+            out.append(_ESCAPE_MAP.get(nxt, '\\' + nxt))
+            i += 2
+        else:
+            out.append(ch)
+            i += 1
+    return ''.join(out)
+
+
 def _parse_env_file(path: Path) -> dict[str, str]:
     """解析 .env 文件，返回 key=value 字典（忽略注释和空行）"""
     result: dict[str, str] = {}
@@ -243,16 +274,7 @@ def _parse_env_file(path: Path) -> dict[str, str]:
         value = value.strip()
         # 去除可能的引号包裹，并反转义（与 _format_env_value 对称）
         if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
-            value = value[1:-1]
-            # 反转义：还原 _format_env_value 产生的转义序列
-            value = (
-                value.replace('\\$', '$')
-                     .replace('\\t', '\t')
-                     .replace('\\r', '\r')
-                     .replace('\\n', '\n')
-                     .replace('\\"', '"')
-                     .replace('\\\\', '\\')
-            )
+            value = _unescape_env_value(value[1:-1])
         result[key] = value
     return result
 
@@ -350,9 +372,46 @@ async def get_config_raw(request: Request):
     return {"values": values}
 
 
+def _check_config_write_auth(request: Request) -> None:
+    """Enforce authorization for config-write endpoints.
+
+    Strategy (checked in order):
+    1. If ``ADMIN_TOKEN`` env var is set, require ``Authorization: Bearer <token>``.
+    2. Otherwise fall back to local-only access: the request must come from a
+       loopback address (127.0.0.1 / ::1) **without** proxy forwarding headers.
+    Raises :class:`HTTPException` (401 or 403) on failure.
+    """
+    admin_token = os.getenv("ADMIN_TOKEN", "").strip()
+
+    if admin_token:
+        auth_header = (request.headers.get("authorization") or "").strip()
+        if not auth_header.startswith("Bearer ") or auth_header[7:].strip() != admin_token:
+            logger.warning(
+                "配置写入请求被拒绝: 无效的 Authorization 令牌 (来源: %s)",
+                request.client.host if request.client else "unknown",
+            )
+            raise HTTPException(status_code=401, detail="需要有效的 ADMIN_TOKEN 授权")
+        return  # token 匹配，放行
+
+    # 无 ADMIN_TOKEN —— 仅允许本机直连
+    if request.headers.get("x-forwarded-for") or request.headers.get("forwarded"):
+        logger.warning("配置写入请求被拒绝: 检测到代理转发头")
+        raise HTTPException(status_code=403, detail="不允许通过代理修改配置")
+
+    client_host = request.client.host if request.client else ""
+    if client_host not in ("127.0.0.1", "::1"):
+        logger.warning("配置写入请求被拒绝: 非本机来源 (%s)", client_host)
+        raise HTTPException(
+            status_code=403,
+            detail="未设置 ADMIN_TOKEN 时仅允许从本机修改配置",
+        )
+
+
 @app.post("/api/config")
 async def save_config(request: Request):
     """保存配置到 .env 文件"""
+    _check_config_write_auth(request)
+
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="请求体必须是 JSON 对象")
